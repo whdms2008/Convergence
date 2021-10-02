@@ -1,6 +1,7 @@
 import random
 
 import PyLidar3
+import numpy as np
 import pandas as pd
 import time  # Time module
 import cv2
@@ -14,8 +15,6 @@ def output(array):
         print(e)
 
 
-# 이미지 형태
-# 3등분
 
 def position_out(number, in_frame):
     h, w, c = in_frame.shape
@@ -39,8 +38,29 @@ def position_out(number, in_frame):
 
 
 def position_lidar(csv):
-    data = pd.read_csv(csv , header=None)
-    print(data.to_numpy()[0][89:269]) #0.5초 때 값
+    numbers = {}
+    data = csv[0:89] + csv[269:359]
+
+    j = 5
+    for i in range(0, len(data), 5):
+        result = sum(data[i:j])
+        #print("검출중", i, "도 ~", j, "도 :", result, data[i:j])
+        j += 5
+        if 500 < result <= 2500:
+            if 0 <= i <= 60:
+                #print("1번 영역 검출", result)
+                numbers[1] = result
+                continue
+            if 61 <= i <= 120:
+                #print("2번 영역 검출", result)
+                numbers[2] = result
+                continue
+            if 121 <= i <= 180:
+                #print("3번 영역 검출", result)
+                numbers[3] = result
+                continue
+    return numbers
+
 
 def videoDetector(vcap):
     # 카메라의 프레임을 지속적으로 받아오기
@@ -50,7 +70,7 @@ def videoDetector(vcap):
 
         frame = cv2.flip(frame, 1)  # 좌우 대칭 변경
 
-        frame = position_out(random.randrange(1,7), frame)
+        frame = position_out(random.randrange(1, 7), frame)
 
         cv2.imshow("VideoFrame", frame)
 
@@ -61,12 +81,10 @@ def videoDetector(vcap):
             break
 
 
-
-position_lidar('data.csv')
 cap = cv2.VideoCapture(1, cv2.CAP_DSHOW)
 cap.set(3, 960)
 cap.set(4, 540)
-videoDetector(cap)
+# videoDetector(cap)
 while True:
     Obj = PyLidar3.YdLidarX4("COM5")  # PyLidar3s.your_version_of_lidar(port,chunk_size)
     if Obj.Connect():
@@ -82,18 +100,20 @@ while True:
                 ret, frame = cap.read()
                 position_out(1, frame)
                 print("이미지 출력")
+                lidar = list(next(gen).values())
+                print(position_lidar(lidar))
                 cv2.imwrite('img/data[' + str(i) + '].jpg', frame)
-                csv_data.append(list(next(gen).values()))
+                csv_data.append(lidar)
                 time.sleep(0.5)
                 i += 1
             except Exception as e:
-                print("이미지 처리 오류",e)
+                print("이미지 처리 오류", e)
                 break
         Obj.StopScanning()
         Obj.Disconnect()
         output(csv_data)
         break
     else:
-        print("Error connecting to device")
+        print("라이다 연결 실패")
         Obj.Disconnect()
         continue
