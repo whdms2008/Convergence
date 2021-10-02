@@ -17,22 +17,24 @@ def output(array):
 
 
 def position_out(number, in_frame):
+    check = number.keys()
+    print(check)
     h, w, c = in_frame.shape
     out_frame = in_frame
     for i in range(1, 3):
         out_frame = cv2.line(out_frame, (int(w / 3 * i), 0), (int(w / 3 * i), h), (255, 255, 255), 1)
     out_frame = cv2.line(out_frame, (0, int(h / 2)), (w, int(h / 2)), (255, 255, 255), 1)
-    if number == 1:
+    if 1 in check:
         out_frame[0:int(h / 2), 0:int(w / 3)] = 0  # 1번째
-    elif number == 2:
+    if 2 in check:
         out_frame[0:int(h / 2), int(w / 3 * 1) + 1:int(w / 3 * 2)] = 0  # 2번째
-    elif number == 3:
+    if 3 in check:
         out_frame[0:int(h / 2), int(w / 3 * 2) + 1:int(w)] = 0  # 3번째
-    elif number == 4:
+    if 4 in check:
         out_frame[int(h / 2) + 1:h, 0:int(w / 3)] = 0  # 4번째
-    elif number == 5:
+    if 5 in check:
         out_frame[int(h / 2) + 1:h, int(w / 3 * 1) + 1:int(w / 3 * 2)] = 0  # 5번째
-    elif number == 6:
+    if 6 in check:
         out_frame[int(h / 2) + 1:h, int(w / 3 * 2) + 1:int(w)] = 0  # 6번째
     return out_frame
 
@@ -95,20 +97,21 @@ while True:
         gen = Obj.StartScanning()
         t = time.time()  # start time
         i = 0
-        while (time.time() - t) < 3:  # scan for 30 seconds
+        while (time.time() - t) < 30:  # scan for 30 seconds
             try:
                 ret, frame = cap.read()
-                position_out(1, frame)
-                print("이미지 출력")
                 lidar = list(next(gen).values())
-                print(position_lidar(lidar))
+                position_data = position_lidar(lidar)
+                frame = position_out(position_data, frame)
+                print("이미지 출력")
                 cv2.imwrite('img/data[' + str(i) + '].jpg', frame)
                 csv_data.append(lidar)
-                time.sleep(0.5)
+                time.sleep(0.1)
                 i += 1
             except Exception as e:
                 print("이미지 처리 오류", e)
                 break
+            cv2.imshow("VideoFrame", frame)
         Obj.StopScanning()
         Obj.Disconnect()
         output(csv_data)
