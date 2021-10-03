@@ -18,24 +18,21 @@ def position_out(number, in_frame):
     check = number.keys()
     h, w, c = in_frame.shape
     out_frame = in_frame
-    for i in range(1, 3):
-        out_frame = cv2.line(out_frame, (int(w / 3 * i), 0), (int(w / 3 * i), h), (255, 255, 255), 1)
+    lines = 32
+    for j in range(1, lines):
+        out_frame = cv2.line(out_frame, (int(w / lines * j), 0), (int(w / lines * j), h), (255, 255, 255), 1)
+
     out_frame = cv2.line(out_frame, (0, int(h / 2)), (w, int(h / 2)), (255, 255, 255), 1)
     if len(check) == 0:
         print("아무것도 없음 반환")
         return out_frame
-    if 1 in check:
-        out_frame[0:int(h / 2), 0:int(w / 3)] = 0  # 1번째
-    if 2 in check:
-        out_frame[0:int(h / 2), int(w / 3 * 1) + 1:int(w / 3 * 2)] = 0  # 2번째
-    if 3 in check:
-        out_frame[0:int(h / 2), int(w / 3 * 2) + 1:int(w)] = 0  # 3번째
-    if 4 in check:
-        out_frame[int(h / 2) + 1:h, 0:int(w / 3)] = 0  # 4번째
-    if 5 in check:
-        out_frame[int(h / 2) + 1:h, int(w / 3 * 1) + 1:int(w / 3 * 2)] = 0  # 5번째
-    if 6 in check:
-        out_frame[int(h / 2) + 1:h, int(w / 3 * 2) + 1:int(w)] = 0  # 6번째
+    for x in check:
+        if x != 1:
+            cv2.putText(out_frame, str(int(x)), (int(w/lines * (x-1) ),int(h/4)),cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1, cv2.LINE_AA)
+            out_frame[0:int(h / 2), int(w / lines * (x-1)) + 1:int(w / lines * x)] = 0  # 2번째
+        else:
+            out_frame[0:int(h / 2), 0:int(w / lines)] = 0  # 1번째
+            cv2.putText(out_frame, str(x), (int(w/lines),int(h/4)),cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1, cv2.LINE_AA)
     return out_frame
 
 
@@ -48,23 +45,9 @@ def position_lidar(gen):
         result = sum(data[i:j])
         #print("검출중", i, "도 ~", j, "도 :", result, data[i:j])
         j += 5
-        if 500 <= result <= 1000:
+        if result <= 1000:
             #print("검출중", i, "도 ~", j, "도 :", result, data[i:j])
-            if 0 <= i <= 60:
-                # print("1번 영역 검출", result)
-                #print("60도 -", result)
-                numbers[1] = result
-                continue
-            if 61 <= i <= 120:
-                # print("2번 영역 검출", result)
-                #print("120도 -", result)
-                numbers[2] = result
-                continue
-            if 121 <= i <= 180:
-                # print("3번 영역 검출", result)
-                #print("180도 -", result)
-                numbers[3] = result
-                continue
+            numbers[j/5] = result
     #print(numbers)
     return numbers
 
@@ -108,6 +91,7 @@ class Camera(threading.Thread):
                 cv2.imshow("video", frame)
             else:
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                img = cv2.flip(img,1)
                 cv2.imshow("video", img)
             if cv2.waitKey(1) == 27:
                 self.cap.release()  # 메모리 해제
