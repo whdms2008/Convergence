@@ -42,21 +42,22 @@ def position_out(number, in_frame):
 def position_lidar(gen):
     numbers = {}
     data = gen[269:359] + gen[0:89]
+    #print(len(data))
     j = 5
     for i in range(0, len(data), 5):
         result = sum(data[i:j])
         # print("검출중", i, "도 ~", j, "도 :", result, data[i:j])
-        j += 5
-        if result <= 2500:
+        if result <= 1500:
+            #print("검출중", i, "도 ~", j, "도 :", result, data[i:j])
             numbers[j/5] = result
-            # # print("검출중", i, "도 ~", j, "도 :", result, data[i:j])
+        j += 5
             # if 0 <= i <= 60:
             #     numbers[1] = result
             # if 61 <= i <= 120:
             #     numbers[2] = result
             # if 121 <= i <= 180:
             #     numbers[3] = result
-    print(numbers)
+    #print(numbers)
     return numbers
 
 
@@ -71,13 +72,14 @@ class Logical(threading.Thread):
             # print("계산 시작")
             start_t = timeit.default_timer()
             lidar = list(next(gen).values())
+            #print(len(lidar))
             # print("계산 완료")
             terminate_t = timeit.default_timer()
-            print("걸린시간 ", terminate_t-start_t)
+            #print("걸린시간 ", terminate_t-start_t)
 
 
 class Camera(threading.Thread):
-    def __init__(self, num, width=1920, height=1080):
+    def __init__(self, num, width=416, height=416):
         super().__init__()
         self.num = num
         self.width = width
@@ -107,43 +109,43 @@ class Camera(threading.Thread):
                 else:
                     start_t = timeit.default_timer()
                     # Loading image
-                    img = cv2.resize(img, None, fx=0.4, fy=0.4)
-                    height, width, channels = img.shape
-
-                    # Detecting objects
-                    blob = cv2.dnn.blobFromImage(img, 0.00392, (416, 416), (0, 0, 0), True, crop=False)
-                    net.setInput(blob)
-                    outs = net.forward(output_layers)
-
-                    # 정보를 화면에 표시
-                    class_ids = []
-                    confidences = []
-                    boxes = []
-                    for out in outs:
-                        for detection in out:
-                            scores = detection[5:]
-                            class_id = np.argmax(scores)
-                            confidence = scores[class_id]
-                            if confidence > 0.5:
-                                # Object detected
-                                center_x = int(detection[0] * width)
-                                center_y = int(detection[1] * height)
-                                w = int(detection[2] * width)
-                                h = int(detection[3] * height)
-                                # 좌표
-                                x = int(center_x - w / 2)
-                                y = int(center_y - h / 2)
-                                boxes.append([x, y, w, h])
-                                confidences.append(float(confidence))
-                                class_ids.append(class_id)
-                    indexes = cv2.dnn.NMSBoxes(boxes, confidences, 0.5, 0.4)
-                    font = cv2.FONT_HERSHEY_PLAIN
-                    for i in range(len(boxes)):
-                        if i in indexes:
-                            x, y, w, h = boxes[i]
-                            label = str(classes[class_ids[i]])
-                            cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
-                            cv2.putText(img, label, (x, y + 30), font, 1, (255, 0, 0), 3)
+                    # img = cv2.resize(img, None, fx=0.4, fy=0.4)
+                    # height, width, channels = img.shape
+                    #
+                    # # Detecting objects
+                    # blob = cv2.dnn.blobFromImage(img, 0.00392, (416, 416), (0, 0, 0), True, crop=False)
+                    # net.setInput(blob)
+                    # outs = net.forward(output_layers)
+                    #
+                    # # 정보를 화면에 표시
+                    # class_ids = []
+                    # confidences = []
+                    # boxes = []
+                    # for out in outs:
+                    #     for detection in out:
+                    #         scores = detection[5:]
+                    #         class_id = np.argmax(scores)
+                    #         confidence = scores[class_id]
+                    #         if confidence > 0.5:
+                    #             # Object detected
+                    #             center_x = int(detection[0] * width)
+                    #             center_y = int(detection[1] * height)
+                    #             w = int(detection[2] * width)
+                    #             h = int(detection[3] * height)
+                    #             # 좌표
+                    #             x = int(center_x - w / 2)
+                    #             y = int(center_y - h / 2)
+                    #             boxes.append([x, y, w, h])
+                    #             confidences.append(float(confidence))
+                    #             class_ids.append(class_id)
+                    # indexes = cv2.dnn.NMSBoxes(boxes, confidences, 0.5, 0.4)
+                    # font = cv2.FONT_HERSHEY_PLAIN
+                    # for i in range(len(boxes)):
+                    #     if i in indexes:
+                    #         x, y, w, h = boxes[i]
+                    #         label = str(classes[class_ids[i]])
+                    #         cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
+                    #         cv2.putText(img, label, (x, y + 30), font, 1, (255, 0, 0), 3)
                     terminate_t = timeit.default_timer()
                     FPS = int(1./(terminate_t - start_t ))
                     cv2.imshow("Image", img)
