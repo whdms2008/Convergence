@@ -1,6 +1,10 @@
 import time
-import timeit
 import tensorflow as tf
+
+physical_devices = tf.config.experimental.list_physical_devices('GPU')
+if len(physical_devices) > 0:
+    tf.config.experimental.set_memory_growth(physical_devices[0], True)
+
 from absl import app, flags
 from absl.flags import FLAGS
 import core.utils as utils
@@ -12,10 +16,6 @@ import PyLidar3
 from tensorflow.compat.v1 import ConfigProto
 from tensorflow.compat.v1 import InteractiveSession
 
-
-physical_devices = tf.config.experimental.list_physical_devices('GPU')
-if len(physical_devices) > 0:
-    tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
 flags.DEFINE_string('framework', 'tf', '(tf, tflite, trt')
 flags.DEFINE_string('weights', './model/yolov4-custom',
@@ -39,7 +39,7 @@ def position_lidar(gen, lines):
     step = int(len(data) / lines)
     max = step
     for i in range(0, len(data), step):
-        if sum(data[i:max]) <= 1500:
+        if sum(data[i:max]) <= 20000: #1000 = 1cm , 10000 = 10cm
             numbers[max / step] = sum(data[i:max])
         max += step;
     return numbers
