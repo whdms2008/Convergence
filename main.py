@@ -1,205 +1,174 @@
-import threading
 import time
 import timeit
-import PyLidar3
+import tensorflow as tf
+from absl import app, flags
+from absl.flags import FLAGS
+import core.utils as utils
+from core.yolov4 import filter_boxes
+from tensorflow.python.saved_model import tag_constants
 import cv2
 import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-
-def output(array):
-    try:
-        df = pd.DataFrame(array)
-        df.to_csv('data.csv', index=False, header=False)
-    except Exception as e:
-        print(e)
+import PyLidar3
+from tensorflow.compat.v1 import ConfigProto
+from tensorflow.compat.v1 import InteractiveSession
 
 
-def position_out(number, in_frame):
-    # print(number)
-    check = number.keys()
-    h, w, c = in_frame.shape
-    out_frame = in_frame
-    lines = 3
-    for j in range(1, lines):
-        out_frame = cv2.line(out_frame, (int(w / lines * j), 0), (int(w / lines * j), h), (128, 128, 128), 4)
+physical_devices = tf.config.experimental.list_physical_devices('GPU')
+if len(physical_devices) > 0:
+    tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
-    out_frame = cv2.line(out_frame, (0, int(h / 2)), (w, int(h / 2)), (128, 128, 128), 4)
-    out_frame = cv2.line(out_frame, (1, 1), (1, w), (128, 128, 128), 4)
-    out_frame = cv2.line(out_frame, (h, h), (1, w), (250, 128, 128), 4)
-    out_frame = cv2.line(out_frame, (1, h), (1, 1), (250, 128, 128), 4)
-    out_frame = cv2.line(out_frame, (1, h), (w, w), (250, 128, 128), 4)
-    if len(check) == 0:
-        print("아무것도 없음 반환")
-        return None
-    for x in check:
-            # cv2.putText(out_frame, str(int(x)), (int(w/lines * (x-1) ),int(h/4)),cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1, cv2.LINE_AA)
-            out_frame[0:int(h / 2), int(w / lines * (x - 1)) + 1:int(w / lines * x)] = 0  # 2번째
-            # cv2.putText(out_frame, str(x), (int(w/lines),int(h/4)),cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1, cv2.LINE_AA)
-
-    return out_frame
+flags.DEFINE_string('framework', 'tf', '(tf, tflite, trt')
+flags.DEFINE_string('weights', './model/yolov4-custom',
+                    'path to weights file')
+flags.DEFINE_integer('size', 416, 'resize images to')
+flags.DEFINE_boolean('tiny', False, 'yolo or yolo-tiny')
+flags.DEFINE_string('model', 'yolov4', 'yolov3 or yolov4')
+flags.DEFINE_string('video', '0', 'path to input video or set to 0 for webcam')
+flags.DEFINE_string('output', None, 'path to output video')
+flags.DEFINE_string('output_format', 'XVID', 'codec used in VideoWriter when saving video to file')
+flags.DEFINE_float('iou', 0.45, 'iou threshold')
+flags.DEFINE_float('score', 0.8, 'score threshold')
+flags.DEFINE_boolean('dont_show', False, 'dont show video output')
 
 
-def position_lidar(gen):
+def position_lidar(gen, lines):
     numbers = {}
     data = gen[269:359] + gen[0:89]
-    #print(len(data))
-    j = 5
-    if sum(data[0:59]) <= 1500:
-        numbers[1] = sum(data[0:59])
-    if sum(data[60:119]) <= 1500:
-        numbers[2] = sum(data[60:119])
-    if sum(data[120:179]) <= 1500:
-        numbers[3] = sum(data[120:179])
-    # for i in range(0, len(data), 5):
-    #     result = sum(data[i:j])
-    #     # print("검출중", i, "도 ~", j, "도 :", result, data[i:j])
-    #     if result <= 1500:
-    #         #print("검출중", i, "도 ~", j, "도 :", result, data[i:j])
-    #         #numbers[j/5] = result
-    #         if 0 <= i <= 60:
-    #             numbers[1] = result
-    #         if 61 <= i <= 120:
-    #             numbers[2] = result
-    #         if 121 <= i <= 180:
-    #             numbers[3] = result
-    #     j += 5
-    #print(numbers)
+    if len(data) == 0:
+        return numbers
+    step = int(len(data) / lines)
+    max = step
+    for i in range(0, len(data), step):
+        if sum(data[i:max]) <= 1500:
+            numbers[max / step] = sum(data[i:max])
+        max += step;
     return numbers
 
 
-class Logical(threading.Thread):
-    def __init__(self):
-        super().__init__()
-
-    def run(self):
-        global gen
-        global lidar
-        while True:
-            # print("계산 시작")
-            start_t = timeit.default_timer()
-            lidar = list(next(gen).values())
-            #print(len(lidar))
-            # print("계산 완료")
-            terminate_t = timeit.default_timer()
-            #print("걸린시간 ", terminate_t-start_t)
-
-
-class Camera(threading.Thread):
-    def __init__(self, num, width=1920, height=1080):
-        super().__init__()
-        self.num = num
-        self.width = width
-        self.height = height
-        self.cap = cv2.VideoCapture(self.num, cv2.CAP_DSHOW)
-        self.cap.set(3, self.width)
-        self.cap.set(4, self.height)
-
-    def run(self):
-        global frame
-        global test
-        global lidar
-        print("스레드 작동")
-        net = cv2.dnn.readNet("yolo/yolov3_custom_2_last.weights", "yolo/yolov3_custom_2.cfg",framework="darknet")
-        classes = []
-        with open("yolo/obj.names", "r") as f:
-            classes = [line.strip() for line in f.readlines()]
-        layer_names = net.getLayerNames()
-        output_layers = [layer_names[i[0] - 1] for i in net.getUnconnectedOutLayers()]
-        colors = np.random.uniform(0, 255, size=(len(classes), 3))
-        while True:
-            try:
-                ret, frame = self.cap.read()
-                img = position_out(position_lidar(lidar), frame)
-                if img == None:
-                    continue
-                else:
-                    start_t = timeit.default_timer()
-                    # Loading image
-                    img = cv2.resize(img, None, fx=0.4, fy=0.4)
-                    height, width, channels = img.shape
-
-                    # Detecting objects
-                    blob = cv2.dnn.blobFromImage(img, 0.00392, (416, 416), (0, 0, 0), True, crop=False)
-                    net.setInput(blob)
-                    outs = net.forward(output_layers)
-
-                    # 정보를 화면에 표시
-                    class_ids = []
-                    confidences = []
-                    boxes = []
-                    for out in outs:
-                        for detection in out:
-                            scores = detection[5:]
-                            class_id = np.argmax(scores)
-                            confidence = scores[class_id]
-                            if confidence > 0.5:
-                                # Object detected
-                                center_x = int(detection[0] * width)
-                                center_y = int(detection[1] * height)
-                                w = int(detection[2] * width)
-                                h = int(detection[3] * height)
-                                # 좌표
-                                x = int(center_x - w / 2)
-                                y = int(center_y - h / 2)
-                                boxes.append([x, y, w, h])
-                                confidences.append(float(confidence))
-                                class_ids.append(class_id)
-                    indexes = cv2.dnn.NMSBoxes(boxes, confidences, 0.5, 0.4)
-                    font = cv2.FONT_HERSHEY_PLAIN
-                    for i in range(len(boxes)):
-                        if i in indexes:
-                            x, y, w, h = boxes[i]
-                            label = str(classes[class_ids[i]])
-                            cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
-                            cv2.putText(img, label, (x, y + 30), font, 1, (255, 0, 0), 3)
-                    terminate_t = timeit.default_timer()
-                    FPS = int(1./(terminate_t - start_t ))
-                    cv2.imshow("Image", img)
-                    print(FPS, terminate_t-start_t)
-                if cv2.waitKey(1) == 27:
-                    self.cap.release()  # 메모리 해제
-                    cv2.destroyAllWindows()
-            except Exception as e:
-                print("라이다 값 없음")
-
-
-if __name__ == '__main__':
-    start_t = timeit.default_timer()
-    global frame
-    global lidar
-    global test
-    global gen
-    test = 0
-    t = Camera(0)
-    # sub thread 생성
-    b = Logical()
-    terminate_t = timeit.default_timer()
-    print("걸린시간 ", terminate_t-start_t)
-    Obj = PyLidar3.YdLidarX4("COM5")
-    while True:  # PyLidar3s.your_version_of_lidar(port,chunk_size)
+def main(_argv):
+    while True:
+        Obj = PyLidar3.YdLidarX4("COM5")
         if Obj.Connect():
-            print("라이다 연결 됨")
-            csv_data = []
-            csv_out = []
+            print("라이다 연결됨")
             gen = Obj.StartScanning()
-            b.start()
-            t.start()
-            t = time.time()  # start time
-            i = 0
-            while (time.time() - t) < 100:  # scan for 30 seconds
-                try:
-                    test = 1
-                    # cv2.imwrite('img/data[' + str(i) + '].jpg', frame)
-                    # csv_data.append(lidar)
-                    i += 1
-                except Exception as e:
-                    print("이미지 처리 오류", e)
-            Obj.StopScanning()
-            Obj.Disconnect()
-            output(csv_data)
+            print("라이다 스캔시작")
             break
         else:
             print("라이다 연결 실패")
             Obj.Disconnect()
             continue
+    config = ConfigProto()
+    config.gpu_options.allow_growth = True
+    session = InteractiveSession(config=config)
+    STRIDES, ANCHORS, NUM_CLASS, XYSCALE = utils.load_config(FLAGS)
+    input_size = FLAGS.size
+    video_path = FLAGS.video
+
+    if FLAGS.framework == 'tflite':
+        interpreter = tf.lite.Interpreter(model_path=FLAGS.weights)
+        interpreter.allocate_tensors()
+        input_details = interpreter.get_input_details()
+        output_details = interpreter.get_output_details()
+        print(input_details)
+        print(output_details)
+    else:
+        saved_model_loaded = tf.saved_model.load(FLAGS.weights, tags=[tag_constants.SERVING])
+        infer = saved_model_loaded.signatures['serving_default']
+
+    # begin video capture
+    try:
+        vid = cv2.VideoCapture(int(0))
+    except:
+        vid = cv2.VideoCapture(0)
+
+    out = None
+
+    if FLAGS.output:
+        # by default VideoCapture returns float instead of int
+        width = int(vid.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fps = int(vid.get(cv2.CAP_PROP_FPS))
+        codec = cv2.VideoWriter_fourcc(*FLAGS.output_format)
+        out = cv2.VideoWriter(FLAGS.output, codec, fps, (width, height))
+
+    while True:
+        lidar = list(next(gen).values())
+        if lidar == 0:
+            print("lidar 데이터 없음")
+            continue
+        lines = 3
+        check = position_lidar(lidar, lines)
+        return_value, frame = vid.read()
+        if return_value:
+            h, w, c = frame.shape
+            for j in range(1, lines):
+                frame = cv2.line(frame, (int(w / lines * j), 0), (int(w / lines * j), h), (128, 128, 128), 4)
+
+            frame = cv2.line(frame, (0, int(h / 2)), (w, int(h / 2)), (128, 128, 128), 4)
+            frame = cv2.line(frame, (1, 1), (1, w), (128, 128, 128), 4)
+            frame = cv2.line(frame, (h, h), (1, w), (250, 128, 128), 4)
+            frame = cv2.line(frame, (1, h), (1, 1), (250, 128, 128), 4)
+            frame = cv2.line(frame, (1, h), (w, w), (250, 128, 128), 4)
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            if len(check) != 0:
+                for x in check:
+                    frame[0:int(h / 2), int(w / lines * (x - 1)) + 1:int(w / lines * x)] = 0  # 2번째
+            # frame = Image.fromarray(frame)
+        else:
+            print('Video has ended or failed, try a different video format!')
+            break
+
+        # frame_size = frame.shape[:2]
+        image_data = cv2.resize(frame, (input_size, input_size))
+        image_data = image_data / 255.
+        image_data = image_data[np.newaxis, ...].astype(np.float32)
+        start_time = time.time()
+
+        if FLAGS.framework == 'tflite':
+            interpreter.set_tensor(input_details[0]['index'], image_data)
+            interpreter.invoke()
+            pred = [interpreter.get_tensor(output_details[i]['index']) for i in range(len(output_details))]
+            if FLAGS.model == 'yolov3' and FLAGS.tiny == True:
+                boxes, pred_conf = filter_boxes(pred[1], pred[0], score_threshold=0.25,
+                                                input_shape=tf.constant([input_size, input_size]))
+            else:
+                boxes, pred_conf = filter_boxes(pred[0], pred[1], score_threshold=0.8,
+                                                input_shape=tf.constant([input_size, input_size]))
+        else:
+            batch_data = tf.constant(image_data)
+            pred_bbox = infer(batch_data)
+            for key, value in pred_bbox.items():
+                boxes = value[:, :, 0:4]
+                pred_conf = value[:, :, 4:]
+
+        boxes, scores, classes, valid_detections = tf.image.combined_non_max_suppression(
+            boxes=tf.reshape(boxes, (tf.shape(boxes)[0], -1, 1, 4)),
+            scores=tf.reshape(
+                pred_conf, (tf.shape(pred_conf)[0], -1, tf.shape(pred_conf)[-1])),
+            max_output_size_per_class=50,
+            max_total_size=50,
+            iou_threshold=FLAGS.iou,
+            score_threshold=FLAGS.score
+        )
+        pred_bbox = [boxes.numpy(), scores.numpy(), classes.numpy(), valid_detections.numpy()]
+        image = utils.draw_bbox(frame, pred_bbox)
+        fps = 1.0 / (time.time() - start_time)
+        print("FPS: %.2f" % fps)
+        result = np.asarray(image)
+        cv2.namedWindow("result", cv2.WINDOW_AUTOSIZE)
+        result = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+
+        if not FLAGS.dont_show:
+            cv2.imshow("result", result)
+
+        if FLAGS.output:
+            out.write(result)
+        if cv2.waitKey(1) & 0xFF == ord('q'): break
+    cv2.destroyAllWindows()
+
+
+if __name__ == '__main__':
+    try:
+        app.run(main)
+    except SystemExit:
+        pass
