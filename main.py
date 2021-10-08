@@ -34,17 +34,30 @@ flags.DEFINE_boolean('dont_show', False, 'dont show video output')
 # 1도 = 2.31 픽셀
 # 2.31 을 계속 더하다 가끔씩 반올림..
 # 가까운쪽에 장애물이 없을때 그쪽까지 이미지를 자르는 건 추가적으로 해보자
-def position_draw(object,frame):
+def position_draw(object, frame):
     h,w,c = frame.shape
-    #print(w)
-    float_pixel = w/180
+    #print(h,w)
+    float_pixel = round(w/180,2)
+    first_position = 0
+    end_position = 0
     if len(object) == 0:
-        return None
+        return frame
     for i in range(1,len(object)):
-        first_position = round(object[i][0][0]*float_pixel) # 0 * 2.31
-        end_position = round(object[i][0][-1]*float_pixel)
-        frame = cv2.line(frame, (first_position,200), (end_position, 200), (0, 0, 255), 4)
-        #print("first",first_position ,"end :",end_position)
+        for j in range(0,len(object[i][0])):
+            if object[i][0][j] == 0:
+                continue
+            else:
+                first_position = round(object[i][0][j]*float_pixel) # 0 * 2.31
+                print("first",object[i][0][j] ,"*",float_pixel ,":", first_position)
+                break
+        for j in range(-1,len(object[i][0]),-1):
+            if object[i][0][j] == 0:
+                continue
+            else:
+                end_position = round(object[i][0][j]*float_pixel)
+                print("end",object[i][0][j] ,"*",float_pixel ,":", end_position)
+                break
+        cv2.line(frame, (first_position, 200), (end_position, 200), (0, 0, 255), 4)
     return frame
 
 
@@ -58,18 +71,16 @@ def position_detector(gen):
     distance = 5000
     cnt = 0
     for i in range(0,len(data)): #1
-        # 5000[distance] - 1500[data[i] = 3500[interval] , cnt = 0  cnt : 0
-        # 1500[distance] - 1400[data[i] = 100[interval] ,  cnt += 1 cnt : 1
-        # 1400[distance] - 1450[data[i] = 50[interval] , cnt += 1   cnt : 2
-        #
+        if data[i] == 0:
+            continue
         interval = distance - data[i] #현재 distance 값과 라이다의 거리의 차를 계산
         distance = data[i]
-        if interval <= 100: #값의 차이가 100 이상이면
+        if interval <= 300: #값의 차이가 100 이하이면
             cnt += 1        #카운트 + 1
         else:
             if cnt >= 5:
                 object[len(object)+1] = [i-cnt+j for j in range(cnt)],[data[i-cnt+j] for j in range(cnt)]
-                #print(len(object),"번째 장애물 탐지", object[len(object)])
+                print(len(object),"번째 장애물 탐지", object[len(object)])
             cnt = 0         #카운트 초기화
     return object
 
@@ -81,9 +92,6 @@ def position_lidar(gen, lines):
         return numbers
     step = int(len(data) / lines)
     max = step
-
-    # 180/3
-    # 0~59 , 60~ 119, 120 ~ 179
     for i in range(0, len(data), step):
         if sum(data[i:max]) <= 10000: #1000 = 1cm , 10000 = 10cm
             numbers[max / step] = sum(data[i:max])
@@ -115,8 +123,10 @@ def main(_argv):
         interpreter.allocate_tensors()
         input_details = interpreter.get_input_details()
         output_details = interpreter.get_output_details()
-        print(input_details)
-        print(output_details)
+        #print(input_details)
+        print("모델 불러옴")
+        #print(output_details)
+        print("모델 실행중")
     else:
         saved_model_loaded = tf.saved_model.load(FLAGS.weights, tags=[tag_constants.SERVING])
         infer = saved_model_loaded.signatures['serving_default']
@@ -124,8 +134,8 @@ def main(_argv):
     # begin video capture
     try:
         vid = cv2.VideoCapture(int(0))
-        vid.set(3,960)
-        vid.set(4,540)
+        # vid.set(3,640)
+        # vid.set(4,360)
     except:
         vid = cv2.VideoCapture(0)
 
@@ -152,22 +162,21 @@ def main(_argv):
             #print(w)
             frame = position_draw(position_detector(lidar),frame)
             for j in range(1, lines):
-                frame = cv2.line(frame, (int(w / lines * j), 0), (int(w / lines * j), h), (128, 128, 128), 4)
-            frame = cv2.line(frame, (0, int(h / 2)), (w, int(h / 2)), (128, 128, 128), 4)
-            frame = cv2.line(frame, (1, 1), (1, w), (128, 128, 128), 4)
-            frame = cv2.line(frame, (h, h), (1, w), (250, 128, 128), 4)
-            frame = cv2.line(frame, (1, h), (1, 1), (250, 128, 128), 4)
-            frame = cv2.line(frame, (1, h), (w, w), (250, 128, 128), 4)
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            if len(check) != 0:
-                for x in check:
-                    frame[0:int(h / 2), int(w / lines * (x - 1)) + 1:int(w / lines * x)] = 0  # 2번째
-            # frame = Image.fromarray(frame)
+                frame = cv2.line(frame, (int(w / lines * j), 0), (int(w / lines * j), h), (128, 128, 128), 2)
+            cv2.line(frame, (0, int(h / 2)), (w, int(h / 2)), (128, 128, 128), 2)
+            cv2.rectangle(frame,(0,h),(w,0), (128,128,128),4)
+            cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            # if len(check) != 0:
+            #     for x in check:
+            #         try:
+            #             frame[0:int(h / 2), int(w / lines * (x - 1)) + 1:int(w / lines * x)] = 0  # 2번째
+            #         except Exception as e:
+            #             print("타입 None")
+            #             break
         else:
             print('Video has ended or failed, try a different video format!')
             break
 
-        # frame_size = frame.shape[:2]
         image_data = cv2.resize(frame, (input_size, input_size))
         image_data = image_data / 255.
         image_data = image_data[np.newaxis, ...].astype(np.float32)
