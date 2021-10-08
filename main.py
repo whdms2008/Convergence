@@ -30,6 +30,52 @@ flags.DEFINE_float('score', 0.8, 'score threshold')
 flags.DEFINE_boolean('dont_show', False, 'dont show video output')
 
 
+# 416 / 180 = 2.31
+# 1도 = 2.31 픽셀
+# 2.31 을 계속 더하다 가끔씩 반올림..
+# 가까운쪽에 장애물이 없을때 그쪽까지 이미지를 자르는 건 추가적으로 해보자
+def position_draw(object,frame):
+    if len(object) == 0:
+        return None
+    for i in range(1,len(object)):
+        first_position = round(object[i][0][0]*2.31) # 0 * 2.31
+        end_position = round(object[i][0][len(object[i][0])-1]*2.31)
+        frame = cv2.line(frame, (first_position,360), (end_position, 360), (0, 0, 255), 4)
+        #print("first",first_position ,"end :",end_position)
+    return frame
+
+
+
+def position_detector(gen):
+    data = gen[269:359] + gen[0:89]
+    if len(data) == 0:
+        return None
+    #와 +- 100
+    object = {}
+    distance = 5000
+    cnt = 0
+    for i in range(0,len(data)): #1
+        # 5000[distance] - 1500[data[i] = 3500[interval] , cnt = 0  cnt : 0
+        # 1500[distance] - 1400[data[i] = 100[interval] ,  cnt += 1 cnt : 1
+        # 1400[distance] - 1450[data[i] = 50[interval] , cnt += 1   cnt : 2
+        #
+        interval = distance - data[i] #현재 distance 값과 라이다의 거리의 차를 계산
+        distance = data[i]
+        if interval <= 100: #값의 차이가 100 이상이면
+            cnt += 1        #카운트 + 1
+        else:
+            if cnt >= 5:
+                object[len(object)+1] = [i-cnt+j for j in range(cnt)],[data[i-cnt+j] for j in range(cnt)]
+                #print(len(object),"번째 장애물 탐지", object[len(object)])
+            cnt = 0         #카운트 초기화
+    return object
+
+
+
+
+
+
+
 def position_lidar(gen, lines):
     numbers = {}
     data = gen[269:359] + gen[0:89]
@@ -37,8 +83,11 @@ def position_lidar(gen, lines):
         return numbers
     step = int(len(data) / lines)
     max = step
+
+    # 180/3
+    # 0~59 , 60~ 119, 120 ~ 179
     for i in range(0, len(data), step):
-        if sum(data[i:max]) <= 20000: #1000 = 1cm , 10000 = 10cm
+        if sum(data[i:max]) <= 5000: #1000 = 1cm , 10000 = 10cm
             numbers[max / step] = sum(data[i:max])
         max += step;
     return numbers
@@ -100,9 +149,9 @@ def main(_argv):
         return_value, frame = vid.read()
         if return_value:
             h, w, c = frame.shape
+            frame = position_draw(position_detector(lidar),frame)
             for j in range(1, lines):
                 frame = cv2.line(frame, (int(w / lines * j), 0), (int(w / lines * j), h), (128, 128, 128), 4)
-
             frame = cv2.line(frame, (0, int(h / 2)), (w, int(h / 2)), (128, 128, 128), 4)
             frame = cv2.line(frame, (1, 1), (1, w), (128, 128, 128), 4)
             frame = cv2.line(frame, (h, h), (1, w), (250, 128, 128), 4)
@@ -152,7 +201,7 @@ def main(_argv):
         pred_bbox = [boxes.numpy(), scores.numpy(), classes.numpy(), valid_detections.numpy()]
         image = utils.draw_bbox(frame, pred_bbox)
         fps = 1.0 / (time.time() - start_time)
-        print("FPS: %.2f" % fps)
+        #print("FPS: %.2f" % fps)
         result = np.asarray(image)
         cv2.namedWindow("result", cv2.WINDOW_AUTOSIZE)
         result = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
