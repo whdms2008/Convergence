@@ -79,11 +79,11 @@ def position_detector(gen):
         if data[i] == 0:
             continue
         interval = abs(distance - data[i]) #현재 distance 값과 라이다의 거리의 차를 계산
-        distance = data[i]
-        if interval <= 300: #값의 차이가 100 이하이면
+        distance = data[i] #현재 거
+        if interval <= 300: #값의 차이가 300 이하이면
             cnt += 1        #카운트 + 1
-        else:
-            if cnt >= 5:
+        else:   #값의 차이가 300 이상이면
+            if cnt >= 5: #카운트가 5 이상이면
                 object[len(object)] = [i-cnt+j for j in range(cnt)],[data[i-cnt+j] for j in range(cnt)]
                 print(len(object)-1,"번째 장애물 탐지", object[len(object)-1])
             cnt = 0         #카운트 초기화
