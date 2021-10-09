@@ -38,26 +38,31 @@ def position_draw(object, frame):
     h,w,c = frame.shape
     #print(h,w)
     float_pixel = round(w/180,2)
-    first_position = 0
-    end_position = 0
+    cnt = 0
     if len(object) == 0:
+        #print("장애물 없음")
         return frame
-    for i in range(1,len(object)):
-        for j in range(0,len(object[i][0])):
-            if object[i][0][j] == 0:
-                continue
-            else:
-                first_position = round(object[i][0][j]*float_pixel) # 0 * 2.31
-                print("first",object[i][0][j] ,"*",float_pixel ,":", first_position)
-                break
-        for j in range(-1,len(object[i][0]),-1):
-            if object[i][0][j] == 0:
-                continue
-            else:
-                end_position = round(object[i][0][j]*float_pixel)
-                print("end",object[i][0][j] ,"*",float_pixel ,":", end_position)
-                break
-        cv2.line(frame, (first_position, 200), (end_position, 200), (0, 0, 255), 4)
+    print(len(object),"개 장애물")
+    for i in range(len(object)):
+        # for j in range(0, len(object[i][0])):
+        #     if object[i][0][j] == 0:
+        #         continue
+        #     else:
+        #         first_position = round(object[i][0][j]*float_pixel) # 0 * 2.31
+        #         print(i,"번 장애물 \nfirst",object[i][0][j] ,"*",float_pixel ,":", first_position)
+        #         break
+        # if 0 in object[i][0][int(len(object[i][0])/1.5):]:
+        #     end_position = round(object[i][0][object[i][0].index(0,int(len(object[i][1])/1.5),-1)-1]*float_pixel)
+        #     print("end",object[i][0][object[i][0].index(0,int(len(object[i][1])/1.5),-1)-1] ,"*",float_pixel ,":", end_position)
+        # else:
+        #     end_position = round(object[i][0][-1]*float_pixel)
+        #     print("end",object[i][0][-1] ,"*",float_pixel ,":", end_position)
+        first_position = round(object[i][0][0]*float_pixel) # 0 * 2.31
+        end_position = round(object[i][0][-1]*float_pixel)
+        print( first_position , " ~ " , end_position)
+        cv2.line(frame, (first_position, 250), (end_position, 250), (0, 0, 255), 4)
+        cv2.putText(frame, "first: "+str(first_position),(first_position,300), cv2.FONT_HERSHEY_DUPLEX ,0.5,(0,0,0),1,cv2.LINE_AA)
+        cv2.putText(frame, "end: "+str(end_position),(end_position,300), cv2.FONT_HERSHEY_DUPLEX ,0.5,(0,0,0),1,cv2.LINE_AA)
     return frame
 
 
@@ -73,14 +78,14 @@ def position_detector(gen):
     for i in range(0,len(data)): #1
         if data[i] == 0:
             continue
-        interval = distance - data[i] #현재 distance 값과 라이다의 거리의 차를 계산
+        interval = abs(distance - data[i]) #현재 distance 값과 라이다의 거리의 차를 계산
         distance = data[i]
         if interval <= 300: #값의 차이가 100 이하이면
             cnt += 1        #카운트 + 1
         else:
             if cnt >= 5:
-                object[len(object)+1] = [i-cnt+j for j in range(cnt)],[data[i-cnt+j] for j in range(cnt)]
-                print(len(object),"번째 장애물 탐지", object[len(object)])
+                object[len(object)] = [i-cnt+j for j in range(cnt)],[data[i-cnt+j] for j in range(cnt)]
+                print(len(object)-1,"번째 장애물 탐지", object[len(object)-1])
             cnt = 0         #카운트 초기화
     return object
 
@@ -93,7 +98,7 @@ def position_lidar(gen, lines):
     step = int(len(data) / lines)
     max = step
     for i in range(0, len(data), step):
-        if sum(data[i:max]) <= 10000: #1000 = 1cm , 10000 = 10cm
+        if sum(data[i:max]) <= 20000: #1000 = 1cm , 10000 = 10cm
             numbers[max / step] = sum(data[i:max])
         max += step;
     return numbers
@@ -134,8 +139,8 @@ def main(_argv):
     # begin video capture
     try:
         vid = cv2.VideoCapture(int(0))
-        # vid.set(3,640)
-        # vid.set(4,360)
+        vid.set(3,1280)
+        vid.set(4,720)
     except:
         vid = cv2.VideoCapture(0)
 
@@ -218,7 +223,6 @@ def main(_argv):
 
         if not FLAGS.dont_show:
             cv2.imshow("result", result)
-
         if FLAGS.output:
             out.write(result)
         if cv2.waitKey(1) & 0xFF == ord('q'): break
