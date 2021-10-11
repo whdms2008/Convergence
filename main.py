@@ -29,44 +29,6 @@ flags.DEFINE_float('iou', 0.45, 'iou threshold')
 flags.DEFINE_float('score', 0.8, 'score threshold')
 flags.DEFINE_boolean('dont_show', False, 'dont show video output')
 
-
-# 416 / 180 = 2.31
-# 1도 = 2.31 픽셀
-# 2.31 을 계속 더하다 가끔씩 반올림..
-# 가까운쪽에 장애물이 없을때 그쪽까지 이미지를 자르는 건 추가적으로 해보자
-def position_draw(object, frame):
-    h,w,c = frame.shape
-    #print(h,w)
-    float_pixel = round(w/180,2)
-    cnt = 0
-    if len(object) == 0:
-        #print("장애물 없음")
-        return frame
-    print(len(object),"개 장애물")
-    for i in range(len(object)):
-        # for j in range(0, len(object[i][0])):
-        #     if object[i][0][j] == 0:
-        #         continue
-        #     else:
-        #         first_position = round(object[i][0][j]*float_pixel) # 0 * 2.31
-        #         print(i,"번 장애물 \nfirst",object[i][0][j] ,"*",float_pixel ,":", first_position)
-        #         break
-        # if 0 in object[i][0][int(len(object[i][0])/1.5):]:
-        #     end_position = round(object[i][0][object[i][0].index(0,int(len(object[i][1])/1.5),-1)-1]*float_pixel)
-        #     print("end",object[i][0][object[i][0].index(0,int(len(object[i][1])/1.5),-1)-1] ,"*",float_pixel ,":", end_position)
-        # else:
-        #     end_position = round(object[i][0][-1]*float_pixel)
-        #     print("end",object[i][0][-1] ,"*",float_pixel ,":", end_position)
-        first_position = round(object[i][0][0]*float_pixel) # 0 * 2.31
-        end_position = round(object[i][0][-1]*float_pixel)
-        print( first_position , " ~ " , end_position)
-        cv2.line(frame, (first_position, 250), (end_position, 250), (0, 0, 255), 4)
-        cv2.putText(frame, "first: "+str(first_position),(first_position,300), cv2.FONT_HERSHEY_DUPLEX ,0.5,(0,0,0),1,cv2.LINE_AA)
-        cv2.putText(frame, "end: "+str(end_position),(end_position,300), cv2.FONT_HERSHEY_DUPLEX ,0.5,(0,0,0),1,cv2.LINE_AA)
-    return frame
-
-
-
 def position_detector(gen):
     data = gen[269:359] + gen[0:89]
     if len(data) == 0:
@@ -85,7 +47,7 @@ def position_detector(gen):
         else:   #값의 차이가 300 이상이면
             if cnt >= 5: #카운트가 5 이상이면
                 object[len(object)] = [i-cnt+j for j in range(cnt)],[data[i-cnt+j] for j in range(cnt)]
-                print(len(object)-1,"번째 장애물 탐지", object[len(object)-1])
+                print(len(object)-1,"번째 장애물", object[len(object)-1])
             cnt = 0         #카운트 초기화
     return object
 
