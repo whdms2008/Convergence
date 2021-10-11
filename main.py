@@ -30,6 +30,43 @@ flags.DEFINE_float('score', 0.8, 'score threshold')
 flags.DEFINE_boolean('dont_show', False, 'dont show video output')
 
 
+def position_draw(point, frame):
+    #print(point)
+    h,w,c = frame.shape
+    lines = 3
+    danger = []
+    warning = []
+    safe = []
+    section = {}
+    for i in range(3):
+        section[i] = point[1][i] + point[0][i]
+    #print(section)
+    sort_sec = sorted(section.items(), key=lambda x: x[1])
+    t = sort_sec[1].count(sort_sec[2][1]) # 1
+    t += sort_sec[0].count(sort_sec[2][1]) # 2
+    danger.append(sort_sec[2])
+    if t >= 1:
+        danger.append(sort_sec[1])
+    else:
+        warning.append(sort_sec[1])
+    if t == 2:
+        danger.append(sort_sec[0])
+    else:
+        if sort_sec[0][1] == 0:
+            safe.append(sort_sec[0])
+        else:
+            warning.append(sort_sec[0])
+    #print("위험:",danger)
+    #print("경고:",warning)
+    #print("안전:",safe)
+    for j in range(len(danger)):
+        frame[0:int(h / 2), int(w / lines * danger[j][0]) + 1:int(w / lines * (danger[j][0]+1))] = 0  # 2번째
+    for j in range(len(warning)):
+        frame[0:int(h / 2), int(w / lines * warning[j][0]) + 1:int(w / lines * (warning[j][0]+1))] = 184  # 2번째
+    for j in range(len(safe)):
+        frame[0:int(h / 2), int(w / lines * safe[j][0]) + 1:int(w / lines * (safe[j][0]+1))] = 255  # 2번째
+    return frame
+
 def position_pointing(objects):
     obstacle_point = [0, 0, 0]
     distance_point = [0, 0, 0]
@@ -48,7 +85,7 @@ def position_pointing(objects):
             for j in range(cha + 1):
                 obstacle_point[first + j] += 1
                 distance_point[first + j] += distance(dist)
-    return obstacle_point,distance_point
+    return [obstacle_point,distance_point]
 
 
 def distance(y):
@@ -159,7 +196,8 @@ def main(_argv):
             h, w, c = frame.shape
             # print(w)
             objects = position_detector(lidar)
-            position_pointing(objects)
+            point = position_pointing(objects)
+            frame = position_draw(point, frame)
             for j in range(1, lines):
                 frame = cv2.line(frame, (int(w / lines * j), 0), (int(w / lines * j), h), (128, 128, 128), 2)
             cv2.line(frame, (0, int(h / 2)), (w, int(h / 2)), (128, 128, 128), 2)
