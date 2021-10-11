@@ -1,5 +1,6 @@
 import time
 import tensorflow as tf
+
 physical_devices = tf.config.experimental.list_physical_devices('GPU')
 if len(physical_devices) > 0:
     tf.config.experimental.set_memory_growth(physical_devices[0], True)
@@ -15,7 +16,6 @@ import PyLidar3
 from tensorflow.compat.v1 import ConfigProto
 from tensorflow.compat.v1 import InteractiveSession
 
-
 flags.DEFINE_string('framework', 'tf', '(tf, tflite, trt')
 flags.DEFINE_string('weights', './model/yolov4-custom',
                     'path to weights file')
@@ -29,38 +29,69 @@ flags.DEFINE_float('iou', 0.45, 'iou threshold')
 flags.DEFINE_float('score', 0.8, 'score threshold')
 flags.DEFINE_boolean('dont_show', False, 'dont show video output')
 
-def position_detector(gen):
-    data = gen[269:359] + gen[0:89]
+
+def position_pointing(objects):
+    obstacle_point = [0, 0, 0]
+    distance_point = [0, 0, 0]
+    # 장애물 카운트 & 거리 포인트
+    for i in range(len(objects)):
+        f_x = objects[i][0][0]
+        e_x = objects[i][0][-1]
+        dist = int(sum(objects[i][1]) / len(objects[i][1]))
+        first = f_x // 60
+        end = e_x // 60
+        cha = abs(first - end)
+        if cha == 0:
+            obstacle_point[end] += 1
+            distance_point[end] += distance(dist)
+        else:
+            for j in range(cha + 1):
+                obstacle_point[first + j] += 1
+                distance_point[first + j] += distance(dist)
+    return obstacle_point,distance_point
+
+
+def distance(y):
+    if 120 <= y <= 3413:
+        return 3
+    elif 3414 <= y <= 6706:
+        return 2
+    elif 6707 <= y <= 10000:
+        return 1
+    else:
+        return 0
+
+
+def position_detector(lidar):
+    data = lidar[270:360] + lidar[0:91]
+    # print(len(data))
     if len(data) == 0:
         return None
-    #와 +- 100
     object = {}
-    distance = 5000
     cnt = 0
-    for i in range(0,len(data)): #1
-        if data[i] == 0:
-            continue
-        interval = abs(distance - data[i]) #현재 distance 값과 라이다의 거리의 차를 계산
-        distance = data[i] #현재 거
-        if interval <= 300: #값의 차이가 300 이하이면
-            cnt += 1        #카운트 + 1
-        else:   #값의 차이가 300 이상이면
-            if cnt >= 5: #카운트가 5 이상이면
-                object[len(object)] = [i-cnt+j for j in range(cnt)],[data[i-cnt+j] for j in range(cnt)]
-                print(len(object)-1,"번째 장애물", object[len(object)-1])
-            cnt = 0         #카운트 초기화
+    for i in range(0, len(data)):  # 1
+        if data[i - 1] == 0 and data[i] != 0:
+            interval = 0
+        else:
+            interval = abs(data[i] - data[i - 1])  # 현재 distance 값과 라이다의 거리의 차를 계산
+        if interval <= 100 and data[i] != 0:  # 값의 차이가 100 이하이면
+            cnt += 1  # 카운트 + 1
+        if interval > 100 or i == 180 or data[i] == 0:  # 값의 차이가 100 이상이면
+            if cnt >= 4:  # 카운트가 5 이상이면
+                object[len(object)] = [i - cnt + j for j in range(cnt)], [data[i - cnt + j] for j in range(cnt)]
+            cnt = 0  # 카운트 초기화
     return object
 
 
 def position_lidar(gen, lines):
     numbers = {}
-    data = gen[269:359] + gen[0:89]
+    data = gen[270:359] + gen[0:90]
     if len(data) == 0:
         return numbers
     step = int(len(data) / lines)
     max = step
     for i in range(0, len(data), step):
-        if sum(data[i:max]) <= 20000: #1000 = 1cm , 10000 = 10cm
+        if sum(data[i:max]) <= 20000:  # 1000 = 1cm , 10000 = 10cm
             numbers[max / step] = sum(data[i:max])
         max += step;
     return numbers
@@ -80,19 +111,19 @@ def main(_argv):
             continue
     config = ConfigProto()
     config.gpu_options.allow_growth = True
-    session = InteractiveSession(config=config)
-    STRIDES, ANCHORS, NUM_CLASS, XYSCALE = utils.load_config(FLAGS)
+    InteractiveSession(config=config)
+    STRIDES, ANCHORS, NUM_CLASS, _ = utils.load_config(FLAGS)
     input_size = FLAGS.size
-    video_path = FLAGS.video
+    FLAGS.video
 
     if FLAGS.framework == 'tflite':
         interpreter = tf.lite.Interpreter(model_path=FLAGS.weights)
         interpreter.allocate_tensors()
         input_details = interpreter.get_input_details()
         output_details = interpreter.get_output_details()
-        #print(input_details)
+        # print(input_details)
         print("모델 불러옴")
-        #print(output_details)
+        # print(output_details)
         print("모델 실행중")
     else:
         saved_model_loaded = tf.saved_model.load(FLAGS.weights, tags=[tag_constants.SERVING])
@@ -101,8 +132,8 @@ def main(_argv):
     # begin video capture
     try:
         vid = cv2.VideoCapture(int(0))
-        vid.set(3,1280)
-        vid.set(4,720)
+        vid.set(3, 1280)
+        vid.set(4, 720)
     except:
         vid = cv2.VideoCapture(0)
 
@@ -126,12 +157,13 @@ def main(_argv):
         return_value, frame = vid.read()
         if return_value:
             h, w, c = frame.shape
-            #print(w)
-            frame = position_draw(position_detector(lidar),frame)
+            # print(w)
+            objects = position_detector(lidar)
+            position_pointing(objects)
             for j in range(1, lines):
                 frame = cv2.line(frame, (int(w / lines * j), 0), (int(w / lines * j), h), (128, 128, 128), 2)
             cv2.line(frame, (0, int(h / 2)), (w, int(h / 2)), (128, 128, 128), 2)
-            cv2.rectangle(frame,(0,h),(w,0), (128,128,128),4)
+            cv2.rectangle(frame, (0, h), (w, 0), (128, 128, 128), 4)
             cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             # if len(check) != 0:
             #     for x in check:
@@ -178,7 +210,7 @@ def main(_argv):
         pred_bbox = [boxes.numpy(), scores.numpy(), classes.numpy(), valid_detections.numpy()]
         image = utils.draw_bbox(frame, pred_bbox)
         fps = 1.0 / (time.time() - start_time)
-        #print("FPS: %.2f" % fps)
+        # print("FPS: %.2f" % fps)
         result = np.asarray(image)
         cv2.namedWindow("result", cv2.WINDOW_AUTOSIZE)
         result = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
