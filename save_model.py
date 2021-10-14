@@ -5,7 +5,7 @@ from core.yolov4 import YOLO, decode, filter_boxes
 import core.utils as utils
 from core.config import cfg
 
-flags.DEFINE_string('weights', './data/weight/yolov4-custom.weights', 'path to weights file')
+flags.DEFINE_string('weights', './weight/yolov4-custom_last.weights', 'path to weights file')
 flags.DEFINE_string('output', './model/yolov4-custom', 'path to output')
 flags.DEFINE_boolean('tiny', False, 'is data-tiny or not')
 flags.DEFINE_integer('input_size', 416, 'define input size of export model')

@@ -1,3 +1,4 @@
+import os
 import time
 import tensorflow as tf
 
@@ -60,12 +61,13 @@ def position_draw(point, frame):
     #print("경고:",warning)
     #print("안전:",safe)
     for j in range(len(danger)):
-        frame[0:int(h / 2), int(w / lines * danger[j][0]) + 1:int(w / lines * (danger[j][0]+1))] = 0  # 2번째
+        frame[0:h, int(w / lines * danger[j][0]) + 1:int(w / lines * (danger[j][0]+1))] = 0  # 2번째
     for j in range(len(warning)):
-        frame[0:int(h / 2), int(w / lines * warning[j][0]) + 1:int(w / lines * (warning[j][0]+1))] = 184  # 2번째
+        frame[0:h, int(w / lines * warning[j][0]) + 1:int(w / lines * (warning[j][0]+1))] = 184  # 2번째
     for j in range(len(safe)):
-        frame[0:int(h / 2), int(w / lines * safe[j][0]) + 1:int(w / lines * (safe[j][0]+1))] = 255  # 2번째
+        frame[0:h, int(w / lines * safe[j][0]) + 1:int(w / lines * (safe[j][0]+1))] = 255  # 2번째
     return frame
+
 
 def position_pointing(objects):
     obstacle_point = [0, 0, 0]
@@ -85,7 +87,7 @@ def position_pointing(objects):
             for j in range(cha + 1):
                 obstacle_point[first + j] += 1
                 distance_point[first + j] += distance(dist)
-    return [obstacle_point,distance_point]
+    return [obstacle_point, distance_point]
 
 
 def distance(y):
@@ -213,7 +215,9 @@ def main(_argv):
         else:
             print('Video has ended or failed, try a different video format!')
             break
-
+        # path = 'C:\\Users\\whdms\\PycharmProjects\\hakbu\\img\\'
+        # file_list = os.listdir(path)
+        # cv2.imwrite("img\\img_"+str(len(file_list))+".jpg", frame)
         image_data = cv2.resize(frame, (input_size, input_size))
         image_data = image_data / 255.
         image_data = image_data[np.newaxis, ...].astype(np.float32)
